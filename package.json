@@ -1,5 +1,15 @@
 {
+  "name": "docusense",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && ../.venv/bin/python -m uvicorn app.main:app --reload --port 8000",
+    "dev:frontend": "npm run dev --prefix frontend"
+  },
   "dependencies": {
     "jose": "^6.2.4"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.4"
   }
 }
