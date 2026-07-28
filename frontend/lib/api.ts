@@ -15,7 +15,8 @@ async function getToken(): Promise<string | null> {
   const { encode } = await import("next-auth/jwt")
   return encode({
     token,
-    secret: process.env.NEXTAUTH_SECRET!,
+    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET!,
+    salt: "authjs.session-token",
   })
 }
 
