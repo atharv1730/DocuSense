@@ -1,7 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { api, Workspace } from "@/lib/api"
+import type { Workspace } from "@/lib/api"
+import {
+  createWorkspace,
+  renameWorkspace,
+  deleteWorkspace,
+} from "@/app/dashboard/actions"
 
 export default function WorkspaceDashboard({
   initialWorkspaces,
@@ -15,20 +20,20 @@ export default function WorkspaceDashboard({
 
   async function handleCreate() {
     if (!newName.trim()) return
-    const ws = await api.workspaces.create(newName.trim())
+    const ws = await createWorkspace(newName.trim())
     setWorkspaces((prev) => [ws, ...prev])
     setNewName("")
   }
 
   async function handleRename(id: string) {
     if (!editName.trim()) return
-    const updated = await api.workspaces.rename(id, editName.trim())
+    const updated = await renameWorkspace(id, editName.trim())
     setWorkspaces((prev) => prev.map((w) => (w.id === id ? updated : w)))
     setEditingId(null)
   }
 
   async function handleDelete(id: string) {
-    await api.workspaces.delete(id)
+    await deleteWorkspace(id)
     setWorkspaces((prev) => prev.filter((w) => w.id !== id))
   }
 

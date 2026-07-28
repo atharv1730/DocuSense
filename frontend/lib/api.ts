@@ -2,22 +2,32 @@
  * API client for the backend.
  *
  * This file contains the API client for the backend.
- * It uses the NextAuth JWT token to authenticate requests to the backend.
+ * It signs an HS256 JWT from the NextAuth session for backend auth.
  */
+import { SignJWT } from "jose"
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL!
 
 async function getToken(): Promise<string | null> {
   const { auth } = await import("@/auth")
   const session = await auth()
   if (!session) return null
-  const token = (session as any).accessToken
-  if (!token) return null
-  const { encode } = await import("next-auth/jwt")
-  return encode({
-    token,
-    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET!,
-    salt: "authjs.session-token",
+  const claims = (session as any).accessToken
+  if (!claims?.email) return null
+
+  const secret = new TextEncoder().encode(
+    process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET!
+  )
+
+  return new SignJWT({
+    email: claims.email,
+    name: claims.name,
+    picture: claims.picture,
   })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(secret)
 }
 
 async function apiFetch<T>(
