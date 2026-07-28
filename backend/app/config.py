@@ -9,12 +9,12 @@ class Settings(BaseSettings):
     # Auth
     NEXTAUTH_SECRET: str
     
-    # OpenAI
-    OPENAI_API_KEY: str
+    # Gemini
+    GOOGLE_API_KEY: str
     
     # Models
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
-    GENERATION_MODEL: str = "gpt-4.1"
+    EMBEDDING_MODEL: str = "models/text-embedding-004"
+    GENERATION_MODEL: str = "gemini-2.0-flash"
     CROSS_ENCODER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     
     # Chunking

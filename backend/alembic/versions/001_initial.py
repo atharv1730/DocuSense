@@ -54,7 +54,7 @@ def upgrade():
         sa.Column('char_end', sa.Integer()),
         sa.Column('section_title', sa.String()),
         sa.Column('chunking_strategy', sa.String(), nullable=False),
-        sa.Column('embedding', Vector(1536)),
+        sa.Column('embedding', Vector(768)),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
