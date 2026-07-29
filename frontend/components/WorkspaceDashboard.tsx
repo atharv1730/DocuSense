@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { useState } from "react"
 import type { Workspace } from "@/lib/api"
 import {
@@ -13,6 +14,7 @@ export default function WorkspaceDashboard({
 }: {
   initialWorkspaces: Workspace[]
 }) {
+  const router = useRouter()
   const [workspaces, setWorkspaces] = useState(initialWorkspaces)
   const [newName, setNewName] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -82,7 +84,12 @@ export default function WorkspaceDashboard({
               </>
             ) : (
               <>
-                <span style={{ flex: 1, fontSize: 15 }}>{ws.name}</span>
+                <span
+                  style={{ flex: 1, fontSize: 15, cursor: "pointer" }}
+                  onClick={() => router.push(`/dashboard/${ws.id}`)}
+                >
+                  {ws.name}
+                </span>
                 <button onClick={() => { setEditingId(ws.id); setEditName(ws.name) }} style={{ fontSize: 13, color: "#666", cursor: "pointer", background: "none", border: "none" }}>Rename</button>
                 <button onClick={() => handleDelete(ws.id)} style={{ fontSize: 13, color: "#c00", cursor: "pointer", background: "none", border: "none" }}>Delete</button>
               </>

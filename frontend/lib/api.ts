@@ -35,10 +35,12 @@ async function apiFetch<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = await getToken()
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
@@ -58,6 +60,19 @@ export type Workspace = {
   updated_at: string
 }
 
+export type Document = {
+  id: string
+  workspace_id: string
+  filename: string
+  page_count: number | null
+  size_bytes: number | null
+  status: "uploaded" | "extracting" | "chunking" | "embedding" | "ready" | "failed"
+  error_message: string | null
+  chunking_strategies: string[]
+  created_at: string
+  updated_at: string
+}
+
 export const api = {
   workspaces: {
     list: () => apiFetch<Workspace[]>("/workspaces"),
@@ -73,5 +88,22 @@ export const api = {
       }),
     delete: (id: string) =>
       apiFetch<void>(`/workspaces/${id}`, { method: "DELETE" }),
+  },
+  documents: {
+    list: (workspaceId: string) =>
+      apiFetch<Document[]>(`/workspaces/${workspaceId}/documents`),
+    upload: (workspaceId: string, file: File) => {
+      const form = new FormData()
+      form.append("file", file)
+      return apiFetch<Document>(`/workspaces/${workspaceId}/documents`, {
+        method: "POST",
+        body: form,
+        headers: {}, // let browser set multipart boundary
+      })
+    },
+    delete: (workspaceId: string, documentId: string) =>
+      apiFetch<void>(`/workspaces/${workspaceId}/documents/${documentId}`, {
+        method: "DELETE",
+      }),
   },
 }
