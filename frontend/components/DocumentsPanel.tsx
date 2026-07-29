@@ -1,7 +1,12 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { api, Document } from "@/lib/api"
+import type { Document } from "@/lib/api"
+import {
+  listDocuments,
+  uploadDocument,
+  deleteDocument,
+} from "@/app/dashboard/actions"
 
 const STATUS_COLORS: Record<string, string> = {
   uploaded: "#888",
@@ -42,7 +47,7 @@ export default function DocumentsPanel({
 
     if (inProgress) {
       pollingRef.current = setInterval(async () => {
-        const updated = await api.documents.list(workspaceId)
+        const updated = await listDocuments(workspaceId)
         setDocuments(updated)
       }, 2000)
     }
@@ -60,7 +65,9 @@ export default function DocumentsPanel({
     setError(null)
     setUploading(true)
     try {
-      const doc = await api.documents.upload(workspaceId, file)
+      const formData = new FormData()
+      formData.append("file", file)
+      const doc = await uploadDocument(workspaceId, formData)
       setDocuments((prev) => [doc, ...prev])
     } catch (e: any) {
       setError(e.message)
@@ -70,7 +77,7 @@ export default function DocumentsPanel({
   }
 
   async function handleDelete(docId: string) {
-    await api.documents.delete(workspaceId, docId)
+    await deleteDocument(workspaceId, docId)
     setDocuments((prev) => prev.filter((d) => d.id !== docId))
   }
 

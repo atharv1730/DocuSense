@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str
     
     # Models
-    EMBEDDING_MODEL: str = "models/text-embedding-004"
+    EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+    EMBEDDING_DIMS: int = 768
     GENERATION_MODEL: str = "gemini-2.0-flash"
     CROSS_ENCODER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     

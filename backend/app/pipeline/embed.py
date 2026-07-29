@@ -19,6 +19,7 @@ async def embed_chunks(chunks: list[Chunk]) -> list[list[float]]:
                 model=settings.EMBEDDING_MODEL,
                 content=b,
                 task_type="retrieval_document",
+                output_dimensionality=settings.EMBEDDING_DIMS,
             ),
         )
         embeddings.extend(result["embedding"])

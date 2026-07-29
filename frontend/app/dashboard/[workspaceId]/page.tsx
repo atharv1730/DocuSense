@@ -6,16 +6,17 @@ import DocumentsPanel from "@/components/DocumentsPanel"
 export default async function WorkspacePage({
   params,
 }: {
-  params: { workspaceId: string }
+  params: Promise<{ workspaceId: string }>
 }) {
   const session = await auth()
   if (!session) redirect("/sign-in")
 
-  const documents = await api.documents.list(params.workspaceId)
+  const { workspaceId } = await params
+  const documents = await api.documents.list(workspaceId)
 
   return (
     <DocumentsPanel
-      workspaceId={params.workspaceId}
+      workspaceId={workspaceId}
       initialDocuments={documents}
     />
   )

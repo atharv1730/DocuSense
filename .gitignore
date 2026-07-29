@@ -6,3 +6,6 @@ __pycache__/
 
 node_modules/
 .venv/
+
+# Pdf files in the database
+*.pdf
