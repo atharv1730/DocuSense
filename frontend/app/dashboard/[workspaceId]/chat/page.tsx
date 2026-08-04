@@ -1,6 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { getAuthToken } from "@/lib/api"
+import { getAuthToken, api } from "@/lib/api"
 import ChatPanel from "@/components/ChatPanel"
 
 export default async function ChatPage({
@@ -15,5 +15,13 @@ export default async function ChatPage({
   const authToken = await getAuthToken()
   if (!authToken) redirect("/sign-in")
 
-  return <ChatPanel workspaceId={workspaceId} authToken={authToken} />
+  const documents = await api.documents.list(workspaceId).catch(() => [])
+
+  return (
+    <ChatPanel
+      workspaceId={workspaceId}
+      authToken={authToken}
+      initialDocuments={documents}
+    />
+  )
 }

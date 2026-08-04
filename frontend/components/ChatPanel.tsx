@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { streamChat, type Citation } from "@/lib/api"
+import { streamChat, type Citation, type Document } from "@/lib/api"
 
 type Message = {
   role: "user" | "assistant"
@@ -13,18 +13,38 @@ type Message = {
   error?: string
 }
 
+const ALL_DOCUMENTS = "__all__"
+
+function groupCitationsByDocument(
+  citations: Citation[]
+): { filename: string; citations: Citation[] }[] {
+  const groups: { filename: string; citations: Citation[] }[] = []
+  for (const c of citations) {
+    const existing = groups.find((g) => g.filename === c.filename)
+    if (existing) existing.citations.push(c)
+    else groups.push({ filename: c.filename, citations: [c] })
+  }
+  return groups
+}
+
 export default function ChatPanel({
   workspaceId,
   authToken,
+  initialDocuments,
 }: {
   workspaceId: string
   authToken: string
+  initialDocuments: Document[]
 }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null)
   const [rerankEnabled, setRerankEnabled] = useState(false)
+  const [documents] = useState<Document[]>(
+    initialDocuments.filter((d) => d.status === "ready")
+  )
+  const [scopeDocumentId, setScopeDocumentId] = useState<string>(ALL_DOCUMENTS)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<(() => void) | null>(null)
@@ -79,7 +99,11 @@ export default function ChatPanel({
 
     const abort = streamChat(
       workspaceId,
-      { query, rerank_enabled: rerankEnabled },
+      {
+        query,
+        rerank_enabled: rerankEnabled,
+        document_id: scopeDocumentId === ALL_DOCUMENTS ? undefined : scopeDocumentId,
+      },
       authToken,
       (text) => {
         appendToLastAssistant(text)
@@ -208,41 +232,48 @@ export default function ChatPanel({
                   style={{
                     alignSelf: "flex-start",
                     display: "flex",
-                    flexWrap: "wrap",
+                    flexDirection: "column",
                     gap: 6,
                   }}
                 >
-                  {m.citations.map((c) => (
-                    <button
-                      key={c.index}
-                      onClick={() =>
-                        setSelectedCitation(
-                          selectedCitation?.index === c.index &&
-                            selectedCitation?.filename === c.filename
-                            ? null
-                            : c
-                        )
-                      }
-                      style={{
-                        fontSize: 12,
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        border: "1px solid #ddd",
-                        background:
-                          selectedCitation?.index === c.index &&
-                          selectedCitation?.filename === c.filename
-                            ? "#111"
-                            : "#fff",
-                        color:
-                          selectedCitation?.index === c.index &&
-                          selectedCitation?.filename === c.filename
-                            ? "#fff"
-                            : "#333",
-                        cursor: "pointer",
-                      }}
-                    >
-                      [{c.index}] {c.filename} · p.{c.page_number}
-                    </button>
+                  {groupCitationsByDocument(m.citations).map((group) => (
+                    <div key={group.filename} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11, color: "#999", fontWeight: 500 }}>
+                        {group.filename}:
+                      </span>
+                      {group.citations.map((c) => (
+                        <button
+                          key={c.index}
+                          onClick={() =>
+                            setSelectedCitation(
+                              selectedCitation?.index === c.index &&
+                                selectedCitation?.filename === c.filename
+                                ? null
+                                : c
+                            )
+                          }
+                          style={{
+                            fontSize: 12,
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            border: "1px solid #ddd",
+                            background:
+                              selectedCitation?.index === c.index &&
+                              selectedCitation?.filename === c.filename
+                                ? "#111"
+                                : "#fff",
+                            color:
+                              selectedCitation?.index === c.index &&
+                              selectedCitation?.filename === c.filename
+                                ? "#fff"
+                                : "#333",
+                            cursor: "pointer",
+                          }}
+                        >
+                          [{c.index}] p.{c.page_number}
+                        </button>
+                      ))}
+                    </div>
                   ))}
                 </div>
               )}
@@ -281,8 +312,38 @@ export default function ChatPanel({
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            gap: 8,
             padding: "10px 0 0",
+          }}
+        >
+          <span style={{ fontSize: 12, color: "#666" }}>Scope:</span>
+          <select
+            value={scopeDocumentId}
+            onChange={(e) => setScopeDocumentId(e.target.value)}
+            style={{
+              fontSize: 12,
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid #ddd",
+              background: "#fff",
+              color: "#333",
+            }}
+          >
+            <option value={ALL_DOCUMENTS}>All documents</option>
+            {documents.map((doc) => (
+              <option key={doc.id} value={doc.id}>
+                {doc.filename}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "6px 0 0",
           }}
         >
           <label
