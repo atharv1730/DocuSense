@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     # Models
     EMBEDDING_MODEL: str = "models/gemini-embedding-001"
     EMBEDDING_DIMS: int = 768
-    GENERATION_MODEL: str = "gemini-2.0-flash"
+    # gemini-2.0-flash was deprecated 2026-03-03 (zero free-tier quota).
+    # The whole gemini-2.5-* line is now restricted to accounts that used
+    # it before this cutoff; new projects get a 404. Google's guidance for
+    # new projects is gemini-3.1-flash-lite or gemini-3.5-flash.
+    GENERATION_MODEL: str = "gemini-3.1-flash-lite"
     CROSS_ENCODER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     
     # Chunking

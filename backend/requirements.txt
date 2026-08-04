@@ -13,5 +13,6 @@ google-generativeai
 pymupdf
 sentence-transformers
 httpx
+sse-starlette==2.1.3
 pytest
 pytest-asyncio

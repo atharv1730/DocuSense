@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import Link from "next/link"
 import type { Document } from "@/lib/api"
 import {
   listDocuments,
@@ -89,7 +90,30 @@ export default function DocumentsPanel({
 
   return (
     <div style={{ maxWidth: 640, margin: "60px auto", padding: "0 16px" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 24 }}>Documents</h1>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 24,
+        }}
+      >
+        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Documents</h1>
+        <Link
+          href={`/dashboard/${workspaceId}/chat`}
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "#111",
+            textDecoration: "none",
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            padding: "6px 12px",
+          }}
+        >
+          Open chat →
+        </Link>
+      </div>
 
       {/* Drop zone */}
       <div
