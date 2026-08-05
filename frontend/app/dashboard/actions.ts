@@ -36,3 +36,11 @@ export async function deleteDocument(
 ): Promise<void> {
   return api.documents.delete(workspaceId, documentId)
 }
+
+export async function rechunkDocument(
+  workspaceId: string,
+  documentId: string,
+  strategy: string
+): Promise<{ status: string }> {
+  return api.documents.rechunk(workspaceId, documentId, strategy)
+}

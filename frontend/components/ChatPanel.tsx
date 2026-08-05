@@ -45,6 +45,22 @@ export default function ChatPanel({
     initialDocuments.filter((d) => d.status === "ready")
   )
   const [scopeDocumentId, setScopeDocumentId] = useState<string>(ALL_DOCUMENTS)
+  const [chunkingStrategy, setChunkingStrategy] = useState<"fixed" | "semantic">("fixed")
+
+  // Semantic retrieval requires every in-scope document to have semantic
+  // chunks. When scoped to "All documents", that means every ready doc;
+  // when scoped to one document, just that document.
+  const semanticAvailable =
+    scopeDocumentId === ALL_DOCUMENTS
+      ? documents.length > 0 &&
+        documents.every((d) => d.chunking_strategies.includes("semantic"))
+      : documents.find((d) => d.id === scopeDocumentId)?.chunking_strategies.includes("semantic") ?? false
+
+  useEffect(() => {
+    if (!semanticAvailable && chunkingStrategy === "semantic") {
+      setChunkingStrategy("fixed")
+    }
+  }, [semanticAvailable, chunkingStrategy])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<(() => void) | null>(null)
@@ -102,6 +118,7 @@ export default function ChatPanel({
       {
         query,
         rerank_enabled: rerankEnabled,
+        chunking_strategy: chunkingStrategy,
         document_id: scopeDocumentId === ALL_DOCUMENTS ? undefined : scopeDocumentId,
       },
       authToken,
@@ -335,6 +352,34 @@ export default function ChatPanel({
                 {doc.filename}
               </option>
             ))}
+          </select>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 0 0",
+          }}
+        >
+          <span style={{ fontSize: 12, color: "#666" }}>Chunking:</span>
+          <select
+            value={chunkingStrategy}
+            onChange={(e) => setChunkingStrategy(e.target.value as "fixed" | "semantic")}
+            style={{
+              fontSize: 12,
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid #ddd",
+              background: "#fff",
+              color: "#333",
+            }}
+          >
+            <option value="fixed">Fixed chunking</option>
+            <option value="semantic" disabled={!semanticAvailable}>
+              Semantic chunking{!semanticAvailable ? " (not available)" : ""}
+            </option>
           </select>
         </div>
 

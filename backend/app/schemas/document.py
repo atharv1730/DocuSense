@@ -17,3 +17,7 @@ class DocumentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RechunkRequest(BaseModel):
+    strategy: str

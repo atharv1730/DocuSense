@@ -221,5 +221,13 @@ export const api = {
       apiFetch<void>(`/workspaces/${workspaceId}/documents/${documentId}`, {
         method: "DELETE",
       }),
+    rechunk: (workspaceId: string, documentId: string, strategy: string) =>
+      apiFetch<{ status: string }>(
+        `/workspaces/${workspaceId}/documents/${documentId}/rechunk`,
+        {
+          method: "POST",
+          body: JSON.stringify({ strategy }),
+        }
+      ),
   },
 }

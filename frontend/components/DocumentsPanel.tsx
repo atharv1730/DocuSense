@@ -7,6 +7,7 @@ import {
   listDocuments,
   uploadDocument,
   deleteDocument,
+  rechunkDocument,
 } from "@/app/dashboard/actions"
 
 const STATUS_COLORS: Record<string, string> = {
@@ -37,26 +38,58 @@ export default function DocumentsPanel({
   const [documents, setDocuments] = useState(initialDocuments)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [rechunkingIds, setRechunkingIds] = useState<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Poll status for in-progress documents
+  // Poll status for in-progress documents (including ones we just
+  // triggered a rechunk on, until their strategy list catches up).
   useEffect(() => {
-    const inProgress = documents.some(
-      (d) => !["ready", "failed"].includes(d.status)
-    )
+    const inProgress =
+      documents.some((d) => !["ready", "failed"].includes(d.status)) ||
+      rechunkingIds.size > 0
 
     if (inProgress) {
       pollingRef.current = setInterval(async () => {
         const updated = await listDocuments(workspaceId)
         setDocuments(updated)
+        setRechunkingIds((prev) => {
+          const next = new Set(prev)
+          for (const doc of updated) {
+            if (
+              next.has(doc.id) &&
+              (doc.status === "failed" ||
+                doc.chunking_strategies.includes("semantic"))
+            ) {
+              next.delete(doc.id)
+            }
+          }
+          return next
+        })
       }, 2000)
     }
 
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current)
     }
-  }, [documents, workspaceId])
+  }, [documents, rechunkingIds, workspaceId])
+
+  async function handleAddSemanticChunks(docId: string) {
+    setError(null)
+    setRechunkingIds((prev) => new Set(prev).add(docId))
+    try {
+      await rechunkDocument(workspaceId, docId, "semantic")
+      const updated = await listDocuments(workspaceId)
+      setDocuments(updated)
+    } catch (e: any) {
+      setError(e.message)
+      setRechunkingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(docId)
+        return next
+      })
+    }
+  }
 
   async function handleUpload(file: File) {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -175,6 +208,48 @@ export default function DocumentsPanel({
               {doc.error_message && (
                 <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>
                   {doc.error_message}
+                </div>
+              )}
+              {doc.status === "ready" && (
+                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  {doc.chunking_strategies.map((s) => (
+                    <span
+                      key={s}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: "#3730a3",
+                        background: "#eef2ff",
+                        border: "1px solid #e0e7ff",
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.3,
+                      }}
+                    >
+                      {s}
+                    </span>
+                  ))}
+                  {!doc.chunking_strategies.includes("semantic") && (
+                    <button
+                      onClick={() => handleAddSemanticChunks(doc.id)}
+                      disabled={rechunkingIds.has(doc.id)}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 500,
+                        color: rechunkingIds.has(doc.id) ? "#999" : "#111",
+                        background: "none",
+                        border: "1px solid #ddd",
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        cursor: rechunkingIds.has(doc.id) ? "default" : "pointer",
+                      }}
+                    >
+                      {rechunkingIds.has(doc.id)
+                        ? "Adding semantic chunks..."
+                        : "+ Add semantic chunks"}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

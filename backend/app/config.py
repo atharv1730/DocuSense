@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     CHUNK_SIZE_TOKENS: int = 512
     CHUNK_OVERLAP_TOKENS: int = 64
     SEMANTIC_MAX_TOKENS: int = 512
+    SEMANTIC_HEADING_SIZE_MULTIPLIER: float = 1.2
+    SEMANTIC_MIN_FONT_SIZE: float = 6.0
     
     # Retrieval
     RETRIEVE_K: int = 20

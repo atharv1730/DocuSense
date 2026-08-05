@@ -2,13 +2,23 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from app.db import get_db
+from app.db import get_db, AsyncSessionLocal
 from app.auth import get_current_user
 from app.storage import storage
-from app.pipeline.process import process_document
-from app.schemas.document import DocumentOut
+from app.pipeline.process import process_document, run_semantic_chunking
+from app.schemas.document import DocumentOut, RechunkRequest
 from app.config import settings
 from typing import List
+
+SUPPORTED_STRATEGIES = {"semantic"}
+
+
+async def _run_semantic_chunking_bg(document_id: str) -> None:
+    """Opens a dedicated session for the background task, since the
+    request-scoped `db` dependency is torn down once the endpoint returns.
+    """
+    async with AsyncSessionLocal() as session:
+        await run_semantic_chunking(document_id, session)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/documents", tags=["documents"])
 
@@ -92,6 +102,39 @@ async def upload_document(
         {"id": doc_id},
     )
     return dict(result.mappings().one())
+
+
+@router.post("/{document_id}/rechunk", status_code=202)
+async def rechunk_document(
+    workspace_id: str,
+    document_id: str,
+    body: RechunkRequest,
+    background_tasks: BackgroundTasks,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await verify_workspace(workspace_id, user, db)
+
+    if body.strategy not in SUPPORTED_STRATEGIES:
+        raise HTTPException(status_code=400, detail=f"Unsupported strategy: {body.strategy}")
+
+    result = await db.execute(
+        text("SELECT status, chunking_strategies FROM documents WHERE id = :id AND workspace_id = :wid"),
+        {"id": document_id, "wid": workspace_id},
+    )
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if row["status"] != "ready":
+        raise HTTPException(status_code=400, detail="Document must be in 'ready' status to rechunk")
+
+    if body.strategy in (row["chunking_strategies"] or []):
+        raise HTTPException(status_code=400, detail=f"'{body.strategy}' chunking has already been run for this document")
+
+    background_tasks.add_task(_run_semantic_chunking_bg, document_id)
+
+    return {"status": "accepted"}
 
 
 @router.delete("/{document_id}", status_code=204)
