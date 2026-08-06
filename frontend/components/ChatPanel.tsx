@@ -2,7 +2,13 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { streamChat, type Citation, type Document } from "@/lib/api"
+import {
+  streamChat,
+  submitChunkRating,
+  type Citation,
+  type Document,
+  type RatableChunk,
+} from "@/lib/api"
 
 type Message = {
   role: "user" | "assistant"
@@ -11,6 +17,9 @@ type Message = {
   abstained?: boolean
   streaming?: boolean
   error?: string
+  retrievalLogId?: string | null
+  chunks?: RatableChunk[]
+  ratings?: Record<string, 0 | 1>
 }
 
 const ALL_DOCUMENTS = "__all__"
@@ -131,6 +140,9 @@ export default function ChatPanel({
           citations: event.citations,
           abstained: event.abstained,
           streaming: false,
+          retrievalLogId: event.retrieval_log_id,
+          chunks: event.chunks,
+          ratings: {},
         })
         setLoading(false)
       },
@@ -143,6 +155,35 @@ export default function ChatPanel({
       }
     )
     abortRef.current = abort
+  }
+
+  function handleRate(messageIndex: number, chunkId: string, rating: 0 | 1) {
+    const message = messages[messageIndex]
+    if (!message?.retrievalLogId) return
+
+    setMessages((prev) => {
+      const next = [...prev]
+      const target = next[messageIndex]
+      next[messageIndex] = {
+        ...target,
+        ratings: { ...target.ratings, [chunkId]: rating },
+      }
+      return next
+    })
+
+    submitChunkRating(workspaceId, authToken, message.retrievalLogId, [
+      { chunk_id: chunkId, rating },
+    ]).catch(() => {
+      // Best-effort: revert the optimistic highlight if the save failed.
+      setMessages((prev) => {
+        const next = [...prev]
+        const target = next[messageIndex]
+        const ratings = { ...target.ratings }
+        delete ratings[chunkId]
+        next[messageIndex] = { ...target, ratings }
+        return next
+      })
+    })
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -185,7 +226,12 @@ export default function ChatPanel({
             ← Documents
           </Link>
           <h1 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Chat</h1>
-          <span style={{ width: 80 }} />
+          <Link
+            href={`/dashboard/${workspaceId}/eval`}
+            style={{ fontSize: 13, color: "#888", textDecoration: "none" }}
+          >
+            Eval dashboard →
+          </Link>
         </div>
 
         <div
@@ -294,6 +340,91 @@ export default function ChatPanel({
                   ))}
                 </div>
               )}
+
+              {m.role === "assistant" &&
+                !m.streaming &&
+                !m.abstained &&
+                !!m.chunks?.length &&
+                m.retrievalLogId && (
+                  <div
+                    style={{
+                      alignSelf: "flex-start",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      width: "100%",
+                      maxWidth: "85%",
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: "#999" }}>
+                      Rate retrieved chunks:
+                    </span>
+                    {m.chunks.map((chunk) => {
+                      const rating = m.ratings?.[chunk.id]
+                      return (
+                        <div
+                          key={chunk.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "6px 10px",
+                            border: "1px solid #eee",
+                            borderRadius: 8,
+                            background: "#fafafa",
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, color: "#999" }}>
+                              {chunk.filename} · p.{chunk.page_number}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "#444",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {chunk.text}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleRate(i, chunk.id, 1)}
+                            title="Relevant"
+                            style={{
+                              fontSize: 14,
+                              padding: "4px 8px",
+                              borderRadius: 6,
+                              border: "1px solid #ddd",
+                              background: rating === 1 ? "#16a34a" : "#fff",
+                              color: rating === 1 ? "#fff" : "#333",
+                              cursor: "pointer",
+                            }}
+                          >
+                            👍
+                          </button>
+                          <button
+                            onClick={() => handleRate(i, chunk.id, 0)}
+                            title="Not relevant"
+                            style={{
+                              fontSize: 14,
+                              padding: "4px 8px",
+                              borderRadius: 6,
+                              border: "1px solid #ddd",
+                              background: rating === 0 ? "#dc2626" : "#fff",
+                              color: rating === 0 ? "#fff" : "#333",
+                              cursor: "pointer",
+                            }}
+                          >
+                            👎
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
             </div>
           ))}
 

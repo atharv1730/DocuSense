@@ -95,12 +95,20 @@ export type ChatTokenEvent = {
   text: string
 }
 
+export type RatableChunk = {
+  id: string
+  filename: string
+  page_number: number
+  text: string
+}
+
 export type ChatDoneEvent = {
   type: "done"
   answer: string
   citations: Citation[]
   abstained: boolean
   retrieval_log_id: string | null
+  chunks: RatableChunk[]
 }
 
 export type ChatErrorEvent = {
@@ -189,6 +197,88 @@ export function streamChat(
   return () => controller.abort()
 }
 
+export type ConfigMetrics = {
+  chunking_strategy: string
+  rerank_enabled: boolean
+  precision_at_1: number | null
+  precision_at_3: number | null
+  precision_at_5: number | null
+  mrr: number | null
+  query_count: number
+  rated_query_count: number
+  coverage: number
+}
+
+export type MetricsResponse = {
+  configs: ConfigMetrics[]
+  overall_coverage: number
+}
+
+export type ChunkRatingOut = {
+  chunk_id: string
+  rating: number
+}
+
+export type RetrievalLogOut = {
+  id: string
+  conversation_id: string | null
+  query: string
+  chunking_strategy: string | null
+  rerank_enabled: boolean
+  is_replay: boolean
+  stage1_chunk_ids: string[] | null
+  stage2_chunk_ids: string[] | null
+  final_chunk_ids: string[] | null
+  answer: string | null
+  abstained: boolean | null
+  created_at: string
+  ratings: ChunkRatingOut[]
+}
+
+export type ChunkPreview = {
+  id: string
+  filename: string
+  page_number: number | null
+  text: string
+}
+
+export type RetrievalLogsResponse = {
+  logs: RetrievalLogOut[]
+  total: number
+  page: number
+  page_size: number
+  chunk_previews: Record<string, ChunkPreview>
+}
+
+export type ReplayResponse = {
+  log_ids: string[]
+}
+
+/**
+ * Client-safe rating submission. Like streamChat, this takes an
+ * already-minted token as a prop instead of calling the server-only
+ * getToken(), since it's invoked from a Client Component (ChatPanel).
+ */
+export async function submitChunkRating(
+  workspaceId: string,
+  token: string,
+  retrievalLogId: string,
+  ratings: { chunk_id: string; rating: number }[]
+): Promise<void> {
+  const res = await fetch(`${API_URL}/workspaces/${workspaceId}/eval/ratings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ retrieval_log_id: retrievalLogId, ratings }),
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(error.detail || "Failed to submit rating")
+  }
+}
+
 export const api = {
   workspaces: {
     list: () => apiFetch<Workspace[]>("/workspaces"),
@@ -229,5 +319,51 @@ export const api = {
           body: JSON.stringify({ strategy }),
         }
       ),
+  },
+  eval: {
+    metrics: (workspaceId: string) =>
+      apiFetch<MetricsResponse>(`/workspaces/${workspaceId}/eval/metrics`),
+    submitRatings: (
+      workspaceId: string,
+      retrievalLogId: string,
+      ratings: { chunk_id: string; rating: number }[]
+    ) =>
+      apiFetch<void>(`/workspaces/${workspaceId}/eval/ratings`, {
+        method: "POST",
+        body: JSON.stringify({ retrieval_log_id: retrievalLogId, ratings }),
+      }),
+    logs: (
+      workspaceId: string,
+      params: {
+        page?: number
+        page_size?: number
+        chunking_strategy?: string
+        rerank?: boolean
+      } = {}
+    ) => {
+      const search = new URLSearchParams()
+      if (params.page) search.set("page", String(params.page))
+      if (params.page_size) search.set("page_size", String(params.page_size))
+      if (params.chunking_strategy) search.set("chunking_strategy", params.chunking_strategy)
+      if (params.rerank !== undefined) search.set("rerank", String(params.rerank))
+      const qs = search.toString()
+      return apiFetch<RetrievalLogsResponse>(
+        `/workspaces/${workspaceId}/eval/logs${qs ? `?${qs}` : ""}`
+      )
+    },
+    replay: (
+      workspaceId: string,
+      logIds: string[],
+      chunkingStrategy: string,
+      rerankEnabled: boolean
+    ) =>
+      apiFetch<ReplayResponse>(`/workspaces/${workspaceId}/eval/replay`, {
+        method: "POST",
+        body: JSON.stringify({
+          log_ids: logIds,
+          chunking_strategy: chunkingStrategy,
+          rerank_enabled: rerankEnabled,
+        }),
+      }),
   },
 }

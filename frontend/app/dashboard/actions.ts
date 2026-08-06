@@ -1,6 +1,13 @@
 "use server"
 
-import { api, type Document, type Workspace } from "@/lib/api"
+import {
+  api,
+  type Document,
+  type Workspace,
+  type MetricsResponse,
+  type RetrievalLogsResponse,
+  type ReplayResponse,
+} from "@/lib/api"
 
 export async function createWorkspace(name: string): Promise<Workspace> {
   return api.workspaces.create(name)
@@ -43,4 +50,29 @@ export async function rechunkDocument(
   strategy: string
 ): Promise<{ status: string }> {
   return api.documents.rechunk(workspaceId, documentId, strategy)
+}
+
+export async function getEvalMetrics(workspaceId: string): Promise<MetricsResponse> {
+  return api.eval.metrics(workspaceId)
+}
+
+export async function getEvalLogs(
+  workspaceId: string,
+  params: {
+    page?: number
+    page_size?: number
+    chunking_strategy?: string
+    rerank?: boolean
+  } = {}
+): Promise<RetrievalLogsResponse> {
+  return api.eval.logs(workspaceId, params)
+}
+
+export async function replayEvalQueries(
+  workspaceId: string,
+  logIds: string[],
+  chunkingStrategy: string,
+  rerankEnabled: boolean
+): Promise<ReplayResponse> {
+  return api.eval.replay(workspaceId, logIds, chunkingStrategy, rerankEnabled)
 }

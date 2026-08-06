@@ -132,20 +132,36 @@ export default function DocumentsPanel({
         }}
       >
         <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Documents</h1>
-        <Link
-          href={`/dashboard/${workspaceId}/chat`}
-          style={{
-            fontSize: 13,
-            fontWeight: 500,
-            color: "#111",
-            textDecoration: "none",
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            padding: "6px 12px",
-          }}
-        >
-          Open chat →
-        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link
+            href={`/dashboard/${workspaceId}/eval`}
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#111",
+              textDecoration: "none",
+              border: "1px solid #ddd",
+              borderRadius: 8,
+              padding: "6px 12px",
+            }}
+          >
+            Eval dashboard
+          </Link>
+          <Link
+            href={`/dashboard/${workspaceId}/chat`}
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#111",
+              textDecoration: "none",
+              border: "1px solid #ddd",
+              borderRadius: 8,
+              padding: "6px 12px",
+            }}
+          >
+            Open chat →
+          </Link>
+        </div>
       </div>
 
       {/* Drop zone */}

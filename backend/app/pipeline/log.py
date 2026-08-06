@@ -15,12 +15,13 @@ async def write_retrieval_log(
     stage1_chunk_ids: list[str],
     stage2_chunk_ids: list[str] | None,
     final_chunk_ids: list[str],
-    answer: str,
-    abstained: bool,
+    answer: str | None,
+    abstained: bool | None,
     latency_ms_stage1: int,
     latency_ms_stage2: float | None,
-    latency_ms_generate: int,
-    model: str,
+    latency_ms_generate: int | None,
+    model: str | None,
+    is_replay: bool = False,
 ) -> str:
     log_id = str(uuid.uuid4())
     await db.execute(
@@ -29,12 +30,12 @@ async def write_retrieval_log(
                 id, workspace_id, conversation_id, query, chunking_strategy,
                 rerank_enabled, stage1_chunk_ids, stage2_chunk_ids, final_chunk_ids,
                 answer, abstained, latency_ms_stage1, latency_ms_stage2,
-                latency_ms_generate, model
+                latency_ms_generate, model, is_replay
             ) VALUES (
                 :id, :workspace_id, :conversation_id, :query, :chunking_strategy,
                 :rerank_enabled, CAST(:stage1_chunk_ids AS uuid[]), CAST(:stage2_chunk_ids AS uuid[]),
                 CAST(:final_chunk_ids AS uuid[]), :answer, :abstained, :latency_ms_stage1,
-                :latency_ms_stage2, :latency_ms_generate, :model
+                :latency_ms_stage2, :latency_ms_generate, :model, :is_replay
             )
         """),
         {
@@ -55,6 +56,7 @@ async def write_retrieval_log(
             ),
             "latency_ms_generate": latency_ms_generate,
             "model": model,
+            "is_replay": is_replay,
         },
     )
     await db.commit()

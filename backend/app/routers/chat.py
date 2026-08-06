@@ -115,12 +115,25 @@ async def chat(
                     "Failed to write retrieval log for workspace %s", workspace_id
                 )
 
+            # Full final-chunk list (not just cited ones) so the client can
+            # render a rating card for every chunk shown to the generator.
+            rated_chunks = [
+                {
+                    "id": str(c["id"]),
+                    "filename": c["filename"],
+                    "page_number": c["page_number"],
+                    "text": c["text"][:300],
+                }
+                for c in reranked
+            ]
+
             yield _sse({
                 "type": "done",
                 "answer": full_answer,
                 "citations": citations,
                 "abstained": abstained,
                 "retrieval_log_id": log_id,
+                "chunks": rated_chunks,
             })
 
     return StreamingResponse(
