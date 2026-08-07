@@ -24,12 +24,25 @@ Rules:
 
 CITATION_RE = re.compile(r"\[(\d+)\]")
 
+REWRITE_PROMPT = """Given this conversation history and the follow-up question, rewrite the follow-up as a complete standalone question that could be understood without the conversation context. If the question is already standalone, return it unchanged.
+
+History:
+{history}
+
+Follow-up: {query}
+
+Standalone question:"""
+
 
 def build_context(chunks: list[dict]) -> str:
     parts = []
     for i, chunk in enumerate(chunks, start=1):
         parts.append(f"[{i}] ({chunk['filename']}, p.{chunk['page_number']})\n{chunk['text']}")
     return "\n\n".join(parts)
+
+
+def _format_history(history: list[dict]) -> str:
+    return "\n".join(f"{m['role']}: {m['content']}" for m in history)
 
 
 def parse_citations(answer: str, chunks: list[dict]) -> list[dict]:
@@ -48,12 +61,43 @@ def parse_citations(answer: str, chunks: list[dict]) -> list[dict]:
     return [seen[i] for i in sorted(seen)]
 
 
-async def generate_answer_stream(query: str, chunks: list[dict]):
+async def rewrite_query(query: str, history: list[dict]) -> str:
+    """Rewrites a follow-up question into a complete standalone question
+    using recent conversation history, so retrieval doesn't have to resolve
+    pronouns/ellipsis on its own. Cheap, low-max-tokens call; only meant to
+    be invoked when history is non-empty (the caller decides that)."""
+    prompt = REWRITE_PROMPT.format(history=_format_history(history), query=query)
+    model = genai.GenerativeModel(settings.GENERATION_MODEL)
+
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                max_output_tokens=settings.REWRITE_MAX_TOKENS,
+            ),
+        ),
+    )
+    rewritten = (getattr(response, "text", None) or "").strip()
+    # Small models sometimes echo the "Standalone question:" label from the
+    # prompt back into their output instead of just answering it.
+    rewritten = re.sub(r"^standalone question:\s*", "", rewritten, flags=re.IGNORECASE).strip()
+    return rewritten or query
+
+
+async def generate_answer_stream(query: str, chunks: list[dict], history: list[dict] | None = None):
     """Async generator yielding {"type": "token", ...} then a final
-    {"type": "done", ...} event once the model finishes streaming."""
+    {"type": "done", ...} event once the model finishes streaming.
+
+    `query` should be the user's original (non-rewritten) question, and
+    `history` the recent conversation turns, so the model has full
+    conversational context for its answer even though retrieval upstream
+    used a standalone/rewritten query."""
     start = time.perf_counter()
     context = build_context(chunks)
-    prompt = f"{SYSTEM_PROMPT}\n\nContext:\n{context}\n\nQuestion: {query}\n\nAnswer:"
+    history_block = f"\n\nConversation so far:\n{_format_history(history)}" if history else ""
+    prompt = f"{SYSTEM_PROMPT}\n\nContext:\n{context}{history_block}\n\nQuestion: {query}\n\nAnswer:"
 
     model = genai.GenerativeModel(settings.GENERATION_MODEL)
 

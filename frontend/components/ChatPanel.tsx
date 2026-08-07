@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   streamChat,
-  submitChunkRating,
+  listConversations,
+  createConversation,
+  deleteConversation,
+  getConversationMessages,
   type Citation,
   type Document,
-  type RatableChunk,
+  type Conversation,
 } from "@/lib/api"
 
 type Message = {
@@ -18,8 +21,6 @@ type Message = {
   streaming?: boolean
   error?: string
   retrievalLogId?: string | null
-  chunks?: RatableChunk[]
-  ratings?: Record<string, 0 | 1>
 }
 
 const ALL_DOCUMENTS = "__all__"
@@ -40,14 +41,19 @@ export default function ChatPanel({
   workspaceId,
   authToken,
   initialDocuments,
+  initialConversations,
 }: {
   workspaceId: string
   authToken: string
   initialDocuments: Document[]
+  initialConversations: Conversation[]
 }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
+  const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null)
   const [rerankEnabled, setRerankEnabled] = useState(false)
   const [documents] = useState<Document[]>(
@@ -84,6 +90,73 @@ export default function ChatPanel({
     }
   }, [])
 
+  useEffect(() => {
+    if (!activeConversationId) {
+      setMessages([])
+      return
+    }
+    let cancelled = false
+    setHistoryLoading(true)
+    getConversationMessages(workspaceId, authToken, activeConversationId)
+      .then((msgs) => {
+        if (cancelled) return
+        setMessages(
+          msgs.map((m) => ({
+            role: m.role,
+            content: m.content,
+            citations: m.citations ?? undefined,
+            retrievalLogId: m.retrieval_log_id,
+          }))
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setMessages([])
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeConversationId, workspaceId, authToken])
+
+  function refreshConversations() {
+    listConversations(workspaceId, authToken)
+      .then(setConversations)
+      .catch(() => {})
+  }
+
+  async function handleNewConversation() {
+    try {
+      const conv = await createConversation(workspaceId, authToken)
+      setConversations((prev) => [conv, ...prev])
+      setActiveConversationId(conv.id)
+    } catch {
+      // best-effort; user can retry
+    }
+  }
+
+  async function handleDeleteConversation(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    try {
+      await deleteConversation(workspaceId, authToken, id)
+      setConversations((prev) => prev.filter((c) => c.id !== id))
+      if (activeConversationId === id) {
+        setActiveConversationId(null)
+      }
+    } catch {
+      // best-effort; user can retry
+    }
+  }
+
+  async function ensureActiveConversation(): Promise<string> {
+    if (activeConversationId) return activeConversationId
+    const conv = await createConversation(workspaceId, authToken)
+    setConversations((prev) => [conv, ...prev])
+    setActiveConversationId(conv.id)
+    return conv.id
+  }
+
   function updateLastAssistant(update: Partial<Message>) {
     setMessages((prev) => {
       const next = [...prev]
@@ -109,13 +182,22 @@ export default function ChatPanel({
     })
   }
 
-  function handleSend() {
+  async function handleSend() {
     const query = input.trim()
     if (!query || loading) return
 
     setInput("")
     setLoading(true)
     setSelectedCitation(null)
+
+    let conversationId: string
+    try {
+      conversationId = await ensureActiveConversation()
+    } catch {
+      setLoading(false)
+      return
+    }
+
     setMessages((prev) => [
       ...prev,
       { role: "user", content: query },
@@ -126,6 +208,7 @@ export default function ChatPanel({
       workspaceId,
       {
         query,
+        conversation_id: conversationId,
         rerank_enabled: rerankEnabled,
         chunking_strategy: chunkingStrategy,
         document_id: scopeDocumentId === ALL_DOCUMENTS ? undefined : scopeDocumentId,
@@ -141,10 +224,9 @@ export default function ChatPanel({
           abstained: event.abstained,
           streaming: false,
           retrievalLogId: event.retrieval_log_id,
-          chunks: event.chunks,
-          ratings: {},
         })
         setLoading(false)
+        refreshConversations()
       },
       (message) => {
         updateLastAssistant({
@@ -155,35 +237,6 @@ export default function ChatPanel({
       }
     )
     abortRef.current = abort
-  }
-
-  function handleRate(messageIndex: number, chunkId: string, rating: 0 | 1) {
-    const message = messages[messageIndex]
-    if (!message?.retrievalLogId) return
-
-    setMessages((prev) => {
-      const next = [...prev]
-      const target = next[messageIndex]
-      next[messageIndex] = {
-        ...target,
-        ratings: { ...target.ratings, [chunkId]: rating },
-      }
-      return next
-    })
-
-    submitChunkRating(workspaceId, authToken, message.retrievalLogId, [
-      { chunk_id: chunkId, rating },
-    ]).catch(() => {
-      // Best-effort: revert the optimistic highlight if the save failed.
-      setMessages((prev) => {
-        const next = [...prev]
-        const target = next[messageIndex]
-        const ratings = { ...target.ratings }
-        delete ratings[chunkId]
-        next[messageIndex] = { ...target, ratings }
-        return next
-      })
-    })
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -200,6 +253,99 @@ export default function ChatPanel({
         height: "100vh",
       }}
     >
+      <div
+        style={{
+          width: 240,
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          borderRight: "1px solid #eee",
+          padding: "20px 12px",
+        }}
+      >
+        <button
+          onClick={handleNewConversation}
+          style={{
+            fontSize: 13,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            background: "#111",
+            color: "#fff",
+            cursor: "pointer",
+            fontWeight: 500,
+          }}
+        >
+          + New conversation
+        </button>
+
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            marginTop: 14,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+          }}
+        >
+          {conversations.length === 0 && (
+            <p style={{ fontSize: 12, color: "#999", padding: "8px 4px" }}>
+              No conversations yet. Start one to begin chatting.
+            </p>
+          )}
+          {conversations.map((c) => (
+            <div
+              key={c.id}
+              onClick={() => setActiveConversationId(c.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 6,
+                padding: "8px 10px",
+                borderRadius: 8,
+                cursor: "pointer",
+                background: c.id === activeConversationId ? "#f4f4f5" : "transparent",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: "#111",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.title || "New conversation"}
+                </div>
+                <div style={{ fontSize: 11, color: "#999" }}>
+                  {new Date(c.updated_at).toLocaleString()}
+                </div>
+              </div>
+              <button
+                onClick={(e) => handleDeleteConversation(c.id, e)}
+                title="Delete conversation"
+                style={{
+                  border: "none",
+                  background: "none",
+                  color: "#bbb",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  flexShrink: 0,
+                  padding: 2,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div
         style={{
           flex: 1,
@@ -252,7 +398,13 @@ export default function ChatPanel({
             gap: 16,
           }}
         >
-          {messages.length === 0 && (
+          {historyLoading && (
+            <p style={{ color: "#999", fontSize: 13, marginTop: 40, textAlign: "center" }}>
+              Loading conversation…
+            </p>
+          )}
+
+          {!historyLoading && messages.length === 0 && (
             <p style={{ color: "#999", fontSize: 14, marginTop: 40, textAlign: "center" }}>
               Ask a question about your documents.
             </p>
@@ -349,90 +501,6 @@ export default function ChatPanel({
                 </div>
               )}
 
-              {m.role === "assistant" &&
-                !m.streaming &&
-                !m.abstained &&
-                !!m.chunks?.length &&
-                m.retrievalLogId && (
-                  <div
-                    style={{
-                      alignSelf: "flex-start",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 6,
-                      width: "100%",
-                      maxWidth: "85%",
-                    }}
-                  >
-                    <span style={{ fontSize: 11, color: "#999" }}>
-                      Rate retrieved chunks:
-                    </span>
-                    {m.chunks.map((chunk) => {
-                      const rating = m.ratings?.[chunk.id]
-                      return (
-                        <div
-                          key={chunk.id}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "6px 10px",
-                            border: "1px solid #eee",
-                            borderRadius: 8,
-                            background: "#fafafa",
-                          }}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 11, color: "#999" }}>
-                              {chunk.filename} · p.{chunk.page_number}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 12,
-                                color: "#444",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {chunk.text}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleRate(i, chunk.id, 1)}
-                            title="Relevant"
-                            style={{
-                              fontSize: 14,
-                              padding: "4px 8px",
-                              borderRadius: 6,
-                              border: "1px solid #ddd",
-                              background: rating === 1 ? "#16a34a" : "#fff",
-                              color: rating === 1 ? "#fff" : "#333",
-                              cursor: "pointer",
-                            }}
-                          >
-                            👍
-                          </button>
-                          <button
-                            onClick={() => handleRate(i, chunk.id, 0)}
-                            title="Not relevant"
-                            style={{
-                              fontSize: 14,
-                              padding: "4px 8px",
-                              borderRadius: 6,
-                              border: "1px solid #ddd",
-                              background: rating === 0 ? "#dc2626" : "#fff",
-                              color: rating === 0 ? "#fff" : "#333",
-                              cursor: "pointer",
-                            }}
-                          >
-                            👎
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
             </div>
           ))}
 

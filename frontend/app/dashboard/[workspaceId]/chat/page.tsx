@@ -16,12 +16,14 @@ export default async function ChatPage({
   if (!authToken) redirect("/sign-in")
 
   const documents = await api.documents.list(workspaceId).catch(() => [])
+  const conversations = await api.conversations.list(workspaceId).catch(() => [])
 
   return (
     <ChatPanel
       workspaceId={workspaceId}
       authToken={authToken}
       initialDocuments={documents}
+      initialConversations={conversations}
     />
   )
 }

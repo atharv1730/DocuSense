@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     EMBED_BATCH_SIZE: int = 64
     MAX_UPLOAD_MB: int = 50
 
+    # Conversation memory
+    # Last N messages (user + assistant) included as context when rewriting
+    # follow-up queries and when generating conversational answers.
+    CONVERSATION_HISTORY_TURNS: int = 6
+    REWRITE_MAX_TOKENS: int = 100
+
     # Document comparison
     COMPARE_TITLE_MATCH_THRESHOLD: float = 0.6
     COMPARE_EMBEDDING_MATCH_THRESHOLD: float = 0.75

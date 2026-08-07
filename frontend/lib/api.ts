@@ -63,6 +63,32 @@ async function apiFetch<T>(
   return res.json()
 }
 
+/**
+ * Client-safe fetch: takes an already-minted token as a parameter instead
+ * of calling the server-only getToken(), for use from Client Components
+ * (e.g. ChatPanel's conversation sidebar).
+ */
+async function clientFetch<T>(
+  path: string,
+  token: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(error.detail || "API error")
+  }
+  if (res.status === 204) return undefined as T
+  return res.json()
+}
+
 export type Workspace = {
   id: string
   name: string
@@ -121,6 +147,69 @@ export type ChatRequestBody = {
   document_id?: string
   chunking_strategy?: string
   rerank_enabled?: boolean
+  conversation_id?: string
+}
+
+export type Conversation = {
+  id: string
+  workspace_id: string
+  title: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ConversationMessage = {
+  id: string
+  conversation_id: string
+  role: "user" | "assistant"
+  content: string
+  citations: Citation[] | null
+  retrieval_log_id: string | null
+  created_at: string
+}
+
+/**
+ * Client-safe conversation CRUD, mirroring streamChat/submitChunkRating:
+ * takes an already-minted token instead of using the server-only
+ * getToken(), since these are called from ChatPanel (a Client Component).
+ */
+export function listConversations(
+  workspaceId: string,
+  token: string
+): Promise<Conversation[]> {
+  return clientFetch(`/workspaces/${workspaceId}/conversations`, token)
+}
+
+export function createConversation(
+  workspaceId: string,
+  token: string,
+  title?: string
+): Promise<Conversation> {
+  return clientFetch(`/workspaces/${workspaceId}/conversations`, token, {
+    method: "POST",
+    body: JSON.stringify({ title: title ?? null }),
+  })
+}
+
+export function deleteConversation(
+  workspaceId: string,
+  token: string,
+  conversationId: string
+): Promise<void> {
+  return clientFetch(`/workspaces/${workspaceId}/conversations/${conversationId}`, token, {
+    method: "DELETE",
+  })
+}
+
+export function getConversationMessages(
+  workspaceId: string,
+  token: string,
+  conversationId: string
+): Promise<ConversationMessage[]> {
+  return clientFetch(
+    `/workspaces/${workspaceId}/conversations/${conversationId}/messages`,
+    token
+  )
 }
 
 /**
@@ -414,5 +503,12 @@ export const api = {
           document_id_b: documentIdB,
         }),
       }),
+  },
+  conversations: {
+    // Server-side prefetch only (dashboard/chat page.tsx). ChatPanel uses
+    // the client-safe listConversations/createConversation/etc. above
+    // since it runs as a Client Component.
+    list: (workspaceId: string) =>
+      apiFetch<Conversation[]>(`/workspaces/${workspaceId}/conversations`),
   },
 }
