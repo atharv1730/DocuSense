@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import workspaces, documents, chat, eval as eval_router
+from app.routers import workspaces, documents, chat, eval as eval_router, compare
 
 
 app = FastAPI(title="DocuSense API", version="0.1.0")
@@ -19,6 +19,7 @@ app.include_router(workspaces.router)
 app.include_router(documents.router)
 app.include_router(chat.router)
 app.include_router(eval_router.router)
+app.include_router(compare.router)
 
 
 @app.get("/healthz")

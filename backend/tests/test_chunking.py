@@ -5,6 +5,8 @@ real PDF) to simulate the output of app.pipeline.extract.extract_pdf_blocks
 with known font sizes, mirroring how a PyMuPDF page dict would be parsed.
 """
 
+import io
+import fitz  # PyMuPDF
 import pytest
 from app.pipeline.chunking import SemanticChunker
 from app.pipeline.extract import PageSpan, TextBlock
@@ -78,6 +80,46 @@ def test_max_token_cap():
     for c in chunks:
         assert c.token_count <= max_tokens
         assert c.section_title == "Long Section"
+
+
+def test_numbered_heading_detection_same_font_size():
+    """Exam-style PDFs often number problems ("8.", "Q3") at the same font
+    size as body text, which the font-size heuristic alone would miss.
+    """
+    items = [
+        ("8. Determine whether the series converges.", 12, 1),
+        ("This is the first body paragraph for problem 8.", 12, 1),
+        ("14. Let x = 1 + 3t^2, y = 4 + 2t^3.", 12, 1),
+        ("This is the body paragraph for problem 14.", 12, 1),
+    ]
+    full_text, page_spans, blocks = make_blocks_and_text(items)
+
+    chunker = SemanticChunker()
+    heading_indices = chunker._detect_headings(blocks)
+    assert heading_indices == {0, 2}
+
+    chunks = chunker.chunk(full_text, page_spans, blocks=blocks)
+    assert len(chunks) == 2
+    assert chunks[0].section_title == "8. Determine whether the series converges."
+    assert chunks[1].section_title == "14. Let x = 1 + 3t^2, y = 4 + 2t^3."
+
+
+def test_extract_pdf_blocks_splits_numbered_heading_from_body():
+    """extract_pdf_blocks should split a numbered heading off of the
+    paragraph block PyMuPDF groups it with, even at uniform font size."""
+    from app.pipeline.extract import extract_pdf_blocks
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "8. Determine whether the series converges.\nBody text for problem eight.")
+    buf = io.BytesIO(doc.tobytes())
+    doc.close()
+
+    result = extract_pdf_blocks(buf)
+    heading_blocks = [b for b in result.blocks if b.text.startswith("8.")]
+    assert len(heading_blocks) == 1
+    assert heading_blocks[0].text == "8. Determine whether the series converges."
+    assert any("Body text for problem eight." in b.text for b in result.blocks)
 
 
 def test_section_title_recorded():

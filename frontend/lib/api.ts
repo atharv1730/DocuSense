@@ -279,6 +279,42 @@ export async function submitChunkRating(
   }
 }
 
+export type CompareRequestBody = {
+  document_id_a: string
+  document_id_b: string
+}
+
+export type DocumentRef = {
+  id: string
+  filename: string
+}
+
+export type AlignedSection = {
+  section_title: string
+  identical: boolean
+  differences: string[]
+  changed_clauses: string[]
+  match_type: "title" | "embedding"
+  similarity: number
+  page_a: number | null
+  page_b: number | null
+}
+
+export type SectionSummary = {
+  section_title: string
+  page_number: number | null
+}
+
+export type ComparisonResult = {
+  document_a: DocumentRef
+  document_b: DocumentRef
+  aligned_sections: AlignedSection[]
+  only_in_a: SectionSummary[]
+  only_in_b: SectionSummary[]
+  identical_count: number
+  diff_count: number
+}
+
 export const api = {
   workspaces: {
     list: () => apiFetch<Workspace[]>("/workspaces"),
@@ -363,6 +399,19 @@ export const api = {
           log_ids: logIds,
           chunking_strategy: chunkingStrategy,
           rerank_enabled: rerankEnabled,
+        }),
+      }),
+  },
+  compare: {
+    // Runs one LLM call per aligned section pair, so this can take
+    // 30-60s on documents with many sections. No client-side timeout
+    // is set; the caller is expected to show a loading state.
+    run: (workspaceId: string, documentIdA: string, documentIdB: string) =>
+      apiFetch<ComparisonResult>(`/workspaces/${workspaceId}/compare`, {
+        method: "POST",
+        body: JSON.stringify({
+          document_id_a: documentIdA,
+          document_id_b: documentIdB,
         }),
       }),
   },

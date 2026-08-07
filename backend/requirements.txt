@@ -12,6 +12,7 @@ python-multipart
 google-generativeai
 pymupdf
 sentence-transformers
+numpy
 httpx
 sse-starlette==2.1.3
 pytest

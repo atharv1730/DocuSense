@@ -7,6 +7,7 @@ import {
   type MetricsResponse,
   type RetrievalLogsResponse,
   type ReplayResponse,
+  type ComparisonResult,
 } from "@/lib/api"
 
 export async function createWorkspace(name: string): Promise<Workspace> {
@@ -75,4 +76,12 @@ export async function replayEvalQueries(
   rerankEnabled: boolean
 ): Promise<ReplayResponse> {
   return api.eval.replay(workspaceId, logIds, chunkingStrategy, rerankEnabled)
+}
+
+export async function compareDocuments(
+  workspaceId: string,
+  documentIdA: string,
+  documentIdB: string
+): Promise<ComparisonResult> {
+  return api.compare.run(workspaceId, documentIdA, documentIdB)
 }

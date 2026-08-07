@@ -1,6 +1,36 @@
+import re
 import fitz  # PyMuPDF
 from dataclasses import dataclass
 from typing import BinaryIO
+from app.config import settings
+
+# Matches a numbered/lettered/keyword heading marker at the start of a
+# line, e.g. "8.", "12)", "(3)", "b.", "Section 2", "Problem 7", "Q3".
+# Anchored at the start so it doesn't match numbers appearing mid-sentence.
+HEADING_NUMBERING_RE = re.compile(
+    r"^(?:"
+    r"\d{1,3}[\.\)]"
+    r"|\(\d{1,3}\)"
+    r"|[A-Za-z][\.\)]"
+    r"|Section\s+\d+"
+    r"|Chapter\s+\d+"
+    r"|Part\s+\d+"
+    r"|Problem\s+\d+"
+    r"|Question\s+\d+"
+    r"|Article\s+\d+"
+    r"|Q\d+"
+    r")(?:\s|$)",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_text(text: str) -> str:
+    """Strips NUL bytes and other invalid characters that some PDFs embed
+    in their text streams. Postgres' text/varchar columns reject NUL
+    bytes outright (CharacterNotInRepertoireError), which otherwise
+    aborts the whole insert transaction partway through processing.
+    """
+    return text.replace("\x00", "")
 
 
 @dataclass
@@ -25,7 +55,7 @@ def extract_pdf(file: BinaryIO) -> ExtractResult:
     page_spans = []
 
     for page_num, page in enumerate(doc, start=1):
-        page_text = page.get_text()
+        page_text = _sanitize_text(page.get_text())
         char_start = len(full_text)
         full_text += page_text
         char_end = len(full_text)
@@ -93,10 +123,10 @@ def extract_pdf_blocks(file: BinaryIO) -> BlockExtractResult:
             if block.get("type") != 0:
                 continue  # skip images/non-text blocks
 
-            block_text_parts = []
-            sizes = []
+            lines_info: list[tuple[str, float]] = []
             for line in block.get("lines", []):
                 line_text = ""
+                sizes = []
                 for span in line.get("spans", []):
                     span_text = span.get("text", "")
                     if not span_text:
@@ -104,24 +134,43 @@ def extract_pdf_blocks(file: BinaryIO) -> BlockExtractResult:
                     line_text += span_text
                     sizes.append(span.get("size", 0.0))
                 if line_text.strip():
-                    block_text_parts.append(line_text)
+                    lines_info.append((line_text, max(sizes) if sizes else 0.0))
 
-            block_text = "\n".join(block_text_parts).strip()
-            if not block_text or not sizes:
+            if not lines_info:
                 continue
 
-            font_size = max(sizes)
-            char_start = len(full_text)
-            full_text += block_text + "\n\n"
-            char_end = len(full_text)
+            # A numbered/lettered heading that starts a paragraph (e.g.
+            # "8. Determine whether...") is visually a heading even though
+            # PyMuPDF groups it with its body text as a single block, and
+            # even when it shares the body's font size. Split it into its
+            # own block so downstream heading detection can treat it as a
+            # section boundary.
+            first_text, _ = lines_info[0]
+            splits_off_heading = (
+                len(lines_info) > 1
+                and len(first_text.strip()) <= settings.SEMANTIC_HEADING_NUMBERING_MAX_CHARS
+                and HEADING_NUMBERING_RE.match(first_text.strip())
+            )
+            groups = [[lines_info[0]], lines_info[1:]] if splits_off_heading else [lines_info]
 
-            blocks.append(TextBlock(
-                text=block_text,
-                font_size=font_size,
-                page_number=page_num,
-                char_start=char_start,
-                char_end=char_end,
-            ))
+            for group in groups:
+                group_text = _sanitize_text("\n".join(t for t, _ in group).strip())
+                group_sizes = [s for _, s in group]
+                if not group_text or not group_sizes:
+                    continue
+
+                font_size = max(group_sizes)
+                char_start = len(full_text)
+                full_text += group_text + "\n\n"
+                char_end = len(full_text)
+
+                blocks.append(TextBlock(
+                    text=group_text,
+                    font_size=font_size,
+                    page_number=page_num,
+                    char_start=char_start,
+                    char_end=char_end,
+                ))
 
         page_char_end = len(full_text)
         page_spans.append(PageSpan(

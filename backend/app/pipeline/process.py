@@ -1,10 +1,22 @@
 import uuid
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.storage import storage
 from app.pipeline.extract import extract_pdf, extract_pdf_blocks
 from app.pipeline.chunking import Chunk, FixedChunker, SemanticChunker
 from app.pipeline.embed import embed_chunks
+
+
+def _clean_error_message(e: Exception) -> str:
+    """DBAPIError's default str() includes the failing SQL statement and
+    every bound parameter (which, for a chunk insert, means dumping raw
+    embedding vectors) -- not something to show a user. Fall back to just
+    the driver's own error message in that case.
+    """
+    if isinstance(e, DBAPIError) and e.orig is not None:
+        return str(e.orig)
+    return str(e)
 
 
 async def _insert_chunks(db: AsyncSession, document_id: str, chunks: list[Chunk], embeddings: list[list[float]]) -> None:
@@ -38,6 +50,12 @@ async def _insert_chunks(db: AsyncSession, document_id: str, chunks: list[Chunk]
 
 async def process_document(document_id: str, db: AsyncSession) -> None:
     async def set_status(status: str, error: str = None):
+        # A prior statement in this session may have failed and left the
+        # transaction aborted (Postgres refuses any further commands until
+        # it's rolled back); without this, the "failed" status update below
+        # would itself raise and the document would be stuck showing its
+        # last in-progress status forever.
+        await db.rollback()
         await db.execute(
             text("UPDATE documents SET status = :s, error_message = :e, updated_at = now() WHERE id = :id"),
             {"s": status, "e": error, "id": document_id},
@@ -90,7 +108,7 @@ async def process_document(document_id: str, db: AsyncSession) -> None:
         await db.commit()
 
     except Exception as e:
-        await set_status("failed", str(e))
+        await set_status("failed", _clean_error_message(e))
         raise
 
 
@@ -101,6 +119,7 @@ async def run_semantic_chunking(document_id: str, db: AsyncSession) -> None:
     (font-size-aware) extraction, since fixed chunking only kept plain text.
     """
     async def set_status(status: str, error: str = None):
+        await db.rollback()
         await db.execute(
             text("UPDATE documents SET status = :s, error_message = :e, updated_at = now() WHERE id = :id"),
             {"s": status, "e": error, "id": document_id},
@@ -149,5 +168,5 @@ async def run_semantic_chunking(document_id: str, db: AsyncSession) -> None:
         await db.commit()
 
     except Exception as e:
-        await set_status("failed", str(e))
+        await set_status("failed", _clean_error_message(e))
         raise

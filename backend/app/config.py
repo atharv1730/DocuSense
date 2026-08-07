@@ -28,12 +28,21 @@ class Settings(BaseSettings):
     SEMANTIC_MAX_TOKENS: int = 512
     SEMANTIC_HEADING_SIZE_MULTIPLIER: float = 1.2
     SEMANTIC_MIN_FONT_SIZE: float = 6.0
+    # Headings like "8.", "Section 2", "Problem 3" are visually distinct
+    # even when printed at body-text size (common in exam-style PDFs),
+    # so they're detected by pattern instead of relying on font size alone.
+    SEMANTIC_HEADING_NUMBERING_MAX_CHARS: int = 80
     
     # Retrieval
     RETRIEVE_K: int = 20
     RERANK_N: int = 5
     EMBED_BATCH_SIZE: int = 64
     MAX_UPLOAD_MB: int = 50
+
+    # Document comparison
+    COMPARE_TITLE_MATCH_THRESHOLD: float = 0.6
+    COMPARE_EMBEDDING_MATCH_THRESHOLD: float = 0.75
+    COMPARE_SECTION_PREVIEW_CHARS: int = 300
     
     model_config = SettingsConfigDict(env_file=".env")
 

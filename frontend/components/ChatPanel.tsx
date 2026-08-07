@@ -226,12 +226,20 @@ export default function ChatPanel({
             ← Documents
           </Link>
           <h1 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Chat</h1>
-          <Link
-            href={`/dashboard/${workspaceId}/eval`}
-            style={{ fontSize: 13, color: "#888", textDecoration: "none" }}
-          >
-            Eval dashboard →
-          </Link>
+          <div style={{ display: "flex", gap: 12 }}>
+            <Link
+              href={`/dashboard/${workspaceId}/compare`}
+              style={{ fontSize: 13, color: "#888", textDecoration: "none" }}
+            >
+              Compare
+            </Link>
+            <Link
+              href={`/dashboard/${workspaceId}/eval`}
+              style={{ fontSize: 13, color: "#888", textDecoration: "none" }}
+            >
+              Eval dashboard →
+            </Link>
+          </div>
         </div>
 
         <div

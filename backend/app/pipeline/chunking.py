@@ -2,7 +2,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Protocol
 import tiktoken
-from app.pipeline.extract import PageSpan, TextBlock, char_offset_to_page
+from app.pipeline.extract import PageSpan, TextBlock, char_offset_to_page, HEADING_NUMBERING_RE
 from app.config import settings
 
 
@@ -109,14 +109,28 @@ class SemanticChunker:
 
         heading_indices = set()
         for i, b in enumerate(blocks):
-            modal = modal_by_page.get(b.page_number)
-            if modal is None or b.font_size < self.min_font_size:
-                continue
-            # Single-line blocks that are meaningfully larger than the
-            # page's body text are heading candidates. Multi-line blocks
+            stripped = b.text.strip()
+            # Single-line blocks are heading candidates. Multi-line blocks
             # are almost never headings even if bumped in size.
-            is_short = len(b.text) <= 200 and "\n" not in b.text.strip()
-            if is_short and b.font_size >= modal * self.heading_multiplier:
+            is_short = len(b.text) <= 200 and "\n" not in stripped
+            if not is_short:
+                continue
+
+            modal = modal_by_page.get(b.page_number)
+            is_larger_font = (
+                modal is not None
+                and b.font_size >= self.min_font_size
+                and b.font_size >= modal * self.heading_multiplier
+            )
+            # Numbered/lettered headings ("8.", "Section 2", "Problem 3")
+            # are visually distinct even at body-text size, which a pure
+            # font-size comparison misses (common in exam-style PDFs).
+            is_numbered_heading = (
+                len(stripped) <= settings.SEMANTIC_HEADING_NUMBERING_MAX_CHARS
+                and HEADING_NUMBERING_RE.match(stripped) is not None
+            )
+
+            if is_larger_font or is_numbered_heading:
                 heading_indices.add(i)
         return heading_indices
 
